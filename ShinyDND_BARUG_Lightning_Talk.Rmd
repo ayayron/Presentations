@@ -1,0 +1,195 @@
+---
+title: "Extending Shiny: Building reactive drag & drop elements"
+author: "Aaron Hoffer"
+date: "September 13, 2016"
+output: 
+  ioslides_presentation: 
+    highlight: pygments
+    widescreen: yes
+    css: barug.css
+runtime: shiny
+---
+
+## Goals of this talk {.build .flexbox .vcenter}
+<div class="centered" style="margin-top:-200px;">
+`Why haven't I built my own Shiny widgets?`
+</div>
+
+<div class="centered">
+`Why haven't I installed this awesome drag and drop package?`
+<!-- `install.packages("shinyDND")` -->
+<!-- `devtools::install_github("ayayron/shinyDND")` -->
+</div>
+
+## Why R? {.build}
+- Easy to learn?
+- Great stats packages?
+- Large user community?
+- It's free?
+
+<div class="centered" style="font-size:32pt">`Data %>% Insights`</div>
+
+## Why Shiny? {.flexbox .vcenter}
+<div style="margin-top:-200px;font-size:32pt;">
+`Data %>% Insights %>% Dashboard!`
+</div>
+
+<div class="centered build" style="color:#EEE;">
+But if you just want to share your insights, why not just use pandoc/knitr/Rmarkdown? 
+</div>
+
+## Why did RStudio build Shiny? {.build}
+
+<div style="color:#EEE">If I want others to interact with my R code, 
+why do I need HTML and Javascript?</div>
+
+<div class="centered" style="margin-top:100px;font-size:32pt;">
+`Data %>% Insights %<>% Dashboard!`
+</div>
+
+
+## Drag and drop with Shiny
+
+```{r, echo = FALSE}
+library(shinyDND)
+shinyApp(ui <- shinyUI(
+  fluidPage(
+    br(), br(),
+    fluidRow(column(width = 2, dragSetUI("div1", textval = as.list(names(mtcars)))),
+      column(width = 2, dropUI("drop_yval", style = "width:100px;height:300px")),
+      column(width = 8, plotOutput("myplot"))
+    ),
+    fluidRow(column(width = 4),
+            column(width = 8, 
+                  dropUI("drop_xval", style = "width:400px;height:40px")))
+    )
+),
+
+server = shinyServer(function(input, output,session) {
+  
+  y_v = eventReactive(input$drop_yval,{
+    return(input$drop_yval)
+  })
+  x_v = eventReactive(input$drop_xval,{
+    return(input$drop_xval)
+  })
+  output$myplot = renderPlot({
+    if (x_v() != "drop_xval" & y_v() != "drop_yval") {
+      
+          print(x_v())
+          print(y_v())
+          plot(mtcars[[x_v()]], mtcars[[y_v()]], xlab=x_v(), ylab=y_v())
+    }
+    else {
+      plot(0,0)
+    }
+  })
+  
+}), options = list(height = 500))
+```
+
+
+## ShinyDND {.build}
+
+- create draggable elements and style with css
+```{r, echo = TRUE, eval = FALSE}
+dragUI("mydrag", "Element Name", style = "background-color:red", class = "dragelement")
+```
+- create a drop area with an internal grid
+```{r, echo = TRUE, eval = FALSE}
+dropUI("mydrop", row_n = 4, col_n = 3)
+```
+- create a set of draggable elements 
+```{r, echo = TRUE, eval = FALSE}
+dragSetUI("mydragset", textval = names(mtcars))
+```
+
+- make dropping things reactive
+```{r, echo = TRUE, eval = FALSE}
+observeEvent(input$mydrop, {
+    output$myplot = renderPlot(input$drop_xval, input$drop_yval)
+})
+```
+
+Available on CRAN or `devtools::install_github('ayayron/shinydnd')`
+
+## Defining the drag and drop functionality
+```{r, engine="javascript", eval=FALSE, echo=TRUE}
+//on document ready doesn't work with newly created renderUI() elements
+$(document).bind('DOMNodeInserted', function(){ 
+  $(".dropelement").on("dragover",function(e){
+    e.preventDefault();
+  });
+  $(".dragelement").on("dragstart",function(e){
+    e.originalEvent.dataTransfer.setData("Text",e.target.id);
+  });
+  $(".dropelement").on("drop",function(e){
+    e.preventDefault();
+    var data=e.originalEvent.dataTransfer.getData("Text");
+    e.target.appendChild(document.getElementById(data));
+    var el = $(e.target);
+    el.trigger("change");
+  });
+});
+```
+
+## Extending Shiny.inputBindings() to build reactivity
+
+```{r, engine="javascript", eval=FALSE, echo=TRUE}
+var dragDropBinding = new Shiny.InputBinding();
+// Create reactivity for a drop element
+$.extend(dragDropBinding, {
+  find: function(scope) {return $(scope).find(".dropelement");},
+  getValue: function(el) {return $(el).text();},
+  setValue: function(el) {$(el).text();},
+  subscribe: function(el, callback) {
+    $(el).on("change", function(e) {callback();});},
+  unsubscribe: function(el) {$(el).off(".dragDropBinding");},
+  getType: function() {return "dragdropshiny.dropper";}
+});
+
+Shiny.inputBindings.register(dragDropBinding);
+```
+
+## Attach dependencies to bring it all together
+```{r, eval=FALSE, echo=TRUE}
+.onAttach <- function(...) {
+	# register the js input handler to make the element reactive
+	shiny::registerInputHandler("dragdropshiny.dropper", function(data,...) {
+		if (is.null(data) | data == "")
+	  	  return(NULL)
+		else
+	  	  return(data)
+	}, force = TRUE)
+
+  # Create link to javascript and css files for package, referenced below
+  shiny::addResourcePath("shinydnd", system.file("www", package = "shinyDND"))
+}
+
+# htmlDependency js and css will be used in other functions with attachDependency
+shinyDNDDep = htmltools::htmlDependency("shinyDND", packageVersion("shinyDND"), 
+	src = c("href" = "shinydnd"), script = "dragndrop.js", stylesheet = "dragndrop.css")
+```
+
+## ShinyDND
+
+Don't need ![](star.png)'s, need PRs!
+
+- Would be great to add more examples where people are using it; I'd be happy to add links to the Readme.
+- Let me know of any issues/missing functionality (with solutions even better!)
+
+## Be a Shiny Pioneer!
+
+Good Artists Copy; Great Artists (take open source tools built in other languages and adapt them to be available in their language of choice)
+
+- Think small: shiny, like other software development, uses small/flexible functions/elements to allow developers to build complex systems
+- learn from others:
+    - building input (shiny.rstudio.com/articles/building-inputs.html)
+    - shinyjs (github.com/daattali/shinyjs)
+    - shinyBS (github.com/ebailey78/shinyBS)
+    - radiant (github.com/vnijs/radiant)
+
+## {.flexbox .vcenter}
+<div style="font-size:32pt;color:#EEE">
+Thank you!
+</div>
